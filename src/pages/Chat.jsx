@@ -44,7 +44,7 @@ function Chat() {
       return;
     }
 
-    ws.current = new WebSocket(`ws://127.0.0.1:8000/ws?token=${token}`);
+    ws.current = new WebSocket(`wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`);
 
     ws.current.onmessage = (event) => {
       setMessages((prev) => [...prev, { text: event.data, sentByMe: false }]);
