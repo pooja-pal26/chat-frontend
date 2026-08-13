@@ -1,13 +1,41 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { IconButton, TextField, Avatar, CircularProgress } from '@mui/material';
+import SendIcon from '@mui/icons-material/Send';
+import LogoutIcon from '@mui/icons-material/Logout';
+import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
+import api from '../api/axios';
 
 function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(true);
   const ws = useRef(null);
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
   const username = localStorage.getItem('username');
+
+  // Page load hote hi purane messages fetch karo DB se
+  useEffect(() => {
+    const fetchHistory = async () => {
+      const token = localStorage.getItem('token');
+      try {
+        const response = await api.get('/messages/', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const history = response.data.map((msg) => ({
+          text: `${msg.sender_username}: ${msg.message}`,
+          sentByMe: msg.sender_username === username,
+        }));
+        setMessages(history);
+      } catch (err) {
+        console.error('Failed to load history', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -36,11 +64,11 @@ function Chat() {
   }, [messages]);
 
   const sendMessage = () => {
-    if (input.trim() === '') return;
-    ws.current.send(input);
-    setMessages((prev) => [...prev, { text: `${username}: ${input}`, sentByMe: true }]);
-    setInput('');
-  };
+  if (input.trim() === '') return;
+  ws.current.send(input);
+  setMessages((prev) => [...prev, { text: `${username}: ${input}`, sentByMe: true }]);
+  setInput('');
+};
 
   const handleLogout = () => {
     localStorage.clear();
@@ -48,104 +76,105 @@ function Chat() {
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <span>💬 Chat Room</span>
-        <button onClick={handleLogout} style={styles.logoutBtn}>Logout</button>
-      </div>
+    <div
+      className="d-flex align-items-center justify-content-center"
+      style={{ minHeight: '100vh', backgroundColor: '#f0f2f5' }}
+    >
+      <div
+        className="card shadow-lg border-0 d-flex flex-column"
+        style={{ width: '100%', maxWidth: '480px', height: '90vh', borderRadius: '16px', overflow: 'hidden' }}
+      >
+        {/* Header */}
+        <div
+          className="d-flex align-items-center justify-content-between px-3 py-3"
+          style={{ backgroundColor: '#075E54' }}
+        >
+          <div className="d-flex align-items-center gap-2">
+            <Avatar sx={{ bgcolor: '#25D366', width: 42, height: 42 }}>
+              {username?.[0]?.toUpperCase()}
+            </Avatar>
+            <div>
+              <p className="text-white fw-semibold mb-0" style={{ fontSize: '16px' }}>
+                Chat Room
+              </p>
+              <p className="text-white-50 mb-0" style={{ fontSize: '12px' }}>
+                Online
+              </p>
+            </div>
+          </div>
+          <IconButton onClick={handleLogout} sx={{ color: 'white' }}>
+            <LogoutIcon />
+          </IconButton>
+        </div>
 
-      <div style={styles.chatBox}>
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            style={{
-              ...styles.message,
-              alignSelf: msg.sentByMe ? 'flex-end' : 'flex-start',
-              backgroundColor: msg.sentByMe ? '#dcf8c6' : '#fff',
+        {/* Chat Body */}
+        <div
+          className="flex-grow-1 px-3 py-3 d-flex flex-column gap-2"
+          style={{ backgroundColor: '#ECE5DD', overflowY: 'auto' }}
+        >
+          {loading ? (
+            <div className="d-flex flex-column align-items-center justify-content-center h-100">
+              <CircularProgress sx={{ color: '#075E54' }} />
+              <p className="text-muted mt-3 small">Loading messages...</p>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+              <ChatBubbleIcon sx={{ fontSize: 48, color: '#ccc' }} />
+              <p className="mt-2 small">No messages yet. Say hi! 👋</p>
+            </div>
+          ) : (
+            messages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`px-3 py-2 shadow-sm ${msg.sentByMe ? 'align-self-end' : 'align-self-start'}`}
+                style={{
+                  maxWidth: '75%',
+                  wordWrap: 'break-word',
+                  backgroundColor: msg.sentByMe ? '#DCF8C6' : '#ffffff',
+                  borderRadius: msg.sentByMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
+                  fontSize: '14px',
+                }}
+              >
+                {msg.text}
+              </div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Bar */}
+        <div className="d-flex align-items-center gap-2 px-3 py-2" style={{ backgroundColor: '#f0f0f0' }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Type a message"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            sx={{
+              backgroundColor: 'white',
+              borderRadius: '24px',
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '24px',
+              },
+            }}
+          />
+          <IconButton
+            onClick={sendMessage}
+            sx={{
+              backgroundColor: '#075E54',
+              color: 'white',
+              width: 42,
+              height: 42,
+              '&:hover': { backgroundColor: '#054c44' },
             }}
           >
-            {msg.text}
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      <div style={styles.inputBar}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-          placeholder="Type a message"
-          style={styles.input}
-        />
-        <button onClick={sendMessage} style={styles.sendBtn}>Send</button>
+            <SendIcon fontSize="small" />
+          </IconButton>
+        </div>
       </div>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    maxWidth: 500,
-    margin: '0 auto',
-    fontFamily: 'Arial, sans-serif',
-  },
-  header: {
-    backgroundColor: '#075E54',
-    color: 'white',
-    padding: '15px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  logoutBtn: {
-    backgroundColor: '#fff',
-    color: '#075E54',
-    border: 'none',
-    padding: '5px 10px',
-    borderRadius: '5px',
-    cursor: 'pointer',
-  },
-  chatBox: {
-    flex: 1,
-    padding: '10px',
-    overflowY: 'auto',
-    backgroundColor: '#ECE5DD',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
-  message: {
-    padding: '8px 12px',
-    borderRadius: '8px',
-    maxWidth: '70%',
-    wordWrap: 'break-word',
-    boxShadow: '0 1px 1px rgba(0,0,0,0.1)',
-  },
-  inputBar: {
-    display: 'flex',
-    padding: '10px',
-    backgroundColor: '#f0f0f0',
-  },
-  input: {
-    flex: 1,
-    padding: '10px',
-    borderRadius: '20px',
-    border: '1px solid #ccc',
-    outline: 'none',
-  },
-  sendBtn: {
-    marginLeft: '10px',
-    padding: '10px 20px',
-    backgroundColor: '#075E54',
-    color: 'white',
-    border: 'none',
-    borderRadius: '20px',
-    cursor: 'pointer',
-  },
-};
 
 export default Chat;
