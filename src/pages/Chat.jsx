@@ -4,6 +4,7 @@ import { IconButton, TextField, Avatar, CircularProgress } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import api from '../api/axios';
 
 function Chat() {
@@ -12,8 +13,36 @@ function Chat() {
   const [loading, setLoading] = useState(true);
   const ws = useRef(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
   const navigate = useNavigate();
   const username = localStorage.getItem('username');
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('token');
+    try {
+      const response = await api.post('/upload/', formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      setMessages((prev) => [...prev, {
+        text: username,
+        fileUrl: response.data.file_url,
+        fileType: response.data.file_type,
+        sentByMe: true,
+      }]);
+    } catch (err) {
+      console.error('Upload failed', err);
+    }
+    e.target.value = '';
+  };
 
   // Page load hote hi purane messages fetch karo DB se
   useEffect(() => {
@@ -24,7 +53,9 @@ function Chat() {
           headers: { Authorization: `Bearer ${token}` },
         });
         const history = response.data.map((msg) => ({
-          text: `${msg.sender_username}: ${msg.message}`,
+          text: msg.message ? `${msg.sender_username}: ${msg.message}` : msg.sender_username,
+          fileUrl: msg.file_url || null,
+          fileType: msg.file_type || null,
           sentByMe: msg.sender_username === username,
         }));
         setMessages(history);
@@ -64,11 +95,11 @@ function Chat() {
   }, [messages]);
 
   const sendMessage = () => {
-  if (input.trim() === '') return;
-  ws.current.send(input);
-  setMessages((prev) => [...prev, { text: `${username}: ${input}`, sentByMe: true }]);
-  setInput('');
-};
+    if (input.trim() === '') return;
+    ws.current.send(input);
+    setMessages((prev) => [...prev, { text: `${username}: ${input}`, sentByMe: true }]);
+    setInput('');
+  };
 
   const handleLogout = () => {
     localStorage.clear();
@@ -135,7 +166,15 @@ function Chat() {
                   fontSize: '14px',
                 }}
               >
-                {msg.text}
+                {msg.fileUrl ? (
+                  <img
+                    src={msg.fileUrl}
+                    alt="attachment"
+                    style={{ maxWidth: '200px', borderRadius: '8px', display: 'block' }}
+                  />
+                ) : (
+                  msg.text
+                )}
               </div>
             ))
           )}
@@ -144,6 +183,17 @@ function Chat() {
 
         {/* Input Bar */}
         <div className="d-flex align-items-center gap-2 px-3 py-2" style={{ backgroundColor: '#f0f0f0' }}>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+            accept="image/*"
+          />
+          <IconButton onClick={() => fileInputRef.current.click()}>
+            <AttachFileIcon />
+          </IconButton>
+
           <TextField
             fullWidth
             size="small"
