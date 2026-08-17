@@ -6,6 +6,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ForwardIcon from '@mui/icons-material/Forward';
 import api from '../api/axios';
 
 function Chat() {
@@ -45,7 +46,6 @@ function Chat() {
     e.target.value = '';
   };
 
-  // Page load hote hi purane messages fetch karo DB se
   useEffect(() => {
     const fetchHistory = async () => {
       const token = localStorage.getItem('token');
@@ -113,6 +113,11 @@ function Chat() {
       });
   };
 
+  const forwardMessage = (text) => {
+    const messageOnly = text.includes(': ') ? text.split(': ').slice(1).join(': ') : text;
+    setInput(messageOnly);
+  };
+
   const handleLogout = () => {
     localStorage.clear();
     navigate('/login');
@@ -134,7 +139,6 @@ function Chat() {
           position: 'relative',
         }}
       >
-        {/* Copied Toast */}
         {copiedMsg && (
           <div style={{
             position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
@@ -145,7 +149,6 @@ function Chat() {
           </div>
         )}
 
-        {/* Header */}
         <div
           className="d-flex align-items-center justify-content-between px-3 py-3"
           style={{ backgroundColor: '#075E54' }}
@@ -168,7 +171,6 @@ function Chat() {
           </IconButton>
         </div>
 
-        {/* Chat Body */}
         <div
           className="flex-grow-1 px-3 py-3 d-flex flex-column gap-2"
           style={{ backgroundColor: '#ECE5DD', overflowY: 'auto' }}
@@ -206,16 +208,26 @@ function Chat() {
                 ) : (
                   <div className="d-flex align-items-center justify-content-between gap-2">
                     <span>{msg.text}</span>
-                    <ContentCopyIcon
-                      onClick={() => copyMessage(msg.text)}
-                      sx={{
-                        fontSize: 14,
-                        color: '#888',
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                        '&:hover': { color: '#075E54' },
-                      }}
-                    />
+                    <div className="d-flex gap-1" style={{ flexShrink: 0 }}>
+                      <ForwardIcon
+                        onClick={() => forwardMessage(msg.text)}
+                        sx={{
+                          fontSize: 14,
+                          color: '#888',
+                          cursor: 'pointer',
+                          '&:hover': { color: '#075E54' },
+                        }}
+                      />
+                      <ContentCopyIcon
+                        onClick={() => copyMessage(msg.text)}
+                        sx={{
+                          fontSize: 14,
+                          color: '#888',
+                          cursor: 'pointer',
+                          '&:hover': { color: '#075E54' },
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -224,7 +236,6 @@ function Chat() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Bar */}
         <div className="d-flex align-items-center gap-2 px-3 py-2" style={{ backgroundColor: '#f0f0f0' }}>
           <input
             type="file"
