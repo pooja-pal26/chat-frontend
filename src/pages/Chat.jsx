@@ -5,12 +5,14 @@ import SendIcon from '@mui/icons-material/Send';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import api from '../api/axios';
 
 function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [copiedMsg, setCopiedMsg] = useState(false);
   const ws = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -100,6 +102,17 @@ function Chat() {
     setInput('');
   };
 
+  const copyMessage = (text) => {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setCopiedMsg(true);
+        setTimeout(() => setCopiedMsg(false), 1500);
+      })
+      .catch((err) => {
+        console.error('Copy failed', err);
+      });
+  };
+
   const handleLogout = () => {
     localStorage.clear();
     navigate('/login');
@@ -112,8 +125,26 @@ function Chat() {
     >
       <div
         className="card shadow-lg border-0 d-flex flex-column"
-        style={{ width: '100%', maxWidth: '480px', height: '90vh', borderRadius: '16px', overflow: 'hidden' }}
+        style={{
+          width: '100%',
+          maxWidth: '480px',
+          height: '90vh',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          position: 'relative',
+        }}
       >
+        {/* Copied Toast */}
+        {copiedMsg && (
+          <div style={{
+            position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+            backgroundColor: '#333', color: 'white', padding: '6px 12px',
+            borderRadius: '20px', fontSize: '12px', zIndex: 100,
+          }}>
+            Copied to clipboard!
+          </div>
+        )}
+
         {/* Header */}
         <div
           className="d-flex align-items-center justify-content-between px-3 py-3"
@@ -163,6 +194,7 @@ function Chat() {
                   backgroundColor: msg.sentByMe ? '#DCF8C6' : '#ffffff',
                   borderRadius: msg.sentByMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
                   fontSize: '14px',
+                  position: 'relative',
                 }}
               >
                 {msg.fileUrl ? (
@@ -172,7 +204,19 @@ function Chat() {
                     style={{ maxWidth: '200px', borderRadius: '8px', display: 'block' }}
                   />
                 ) : (
-                  msg.text
+                  <div className="d-flex align-items-center justify-content-between gap-2">
+                    <span>{msg.text}</span>
+                    <ContentCopyIcon
+                      onClick={() => copyMessage(msg.text)}
+                      sx={{
+                        fontSize: 14,
+                        color: '#888',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        '&:hover': { color: '#075E54' },
+                      }}
+                    />
+                  </div>
                 )}
               </div>
             ))
