@@ -114,9 +114,9 @@ function Chat() {
   };
 
   const forwardMessage = (text) => {
-    const messageOnly = text.includes(': ') ? text.split(': ').slice(1).join(': ') : text;
-    setInput(messageOnly);
-  };
+  const messageOnly = text.split(': ').pop();
+  setInput(messageOnly);
+};
 
   const handleLogout = () => {
     localStorage.clear();
