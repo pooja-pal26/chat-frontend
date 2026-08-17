@@ -35,7 +35,6 @@ function Chat() {
         },
       });
       setMessages((prev) => [...prev, {
-        text: username,
         fileUrl: response.data.file_url,
         fileType: response.data.file_type,
         sentByMe: true,
@@ -54,7 +53,7 @@ function Chat() {
           headers: { Authorization: `Bearer ${token}` },
         });
         const history = response.data.map((msg) => ({
-          text: msg.message ? `${msg.sender_username}: ${msg.message}` : msg.sender_username,
+          text: msg.message || null,
           fileUrl: msg.file_url || null,
           fileType: msg.file_type || null,
           sentByMe: msg.sender_username === username,
@@ -70,40 +69,42 @@ function Chat() {
   }, []);
 
   useEffect(() => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    navigate('/login');
-    return;
-  }
-
-  ws.current = new WebSocket(`wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`);
-
-  ws.current.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.file_url) {
-        setMessages((prev) => [...prev, {
-          text: data.sender,
-          fileUrl: data.file_url,
-          fileType: data.file_type,
-          sentByMe: data.sender === username,
-        }]);
-        return;
-      }
-    } catch (e) {
-      // JSON nahi hai — normal text message
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
     }
-    setMessages((prev) => [...prev, { text: event.data, sentByMe: false }]);
-  };
 
-  ws.current.onclose = () => {
-    console.log('Disconnected');
-  };
+    ws.current = new WebSocket(`wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`);
 
-  return () => {
-    ws.current.close();
-  };
-}, []);
+    ws.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.file_url) {
+          setMessages((prev) => [...prev, {
+            fileUrl: data.file_url,
+            fileType: data.file_type,
+            sentByMe: data.sender === username,
+          }]);
+          return;
+        }
+      } catch (e) {
+        // JSON nahi hai
+      }
+
+      const rawText = event.data;
+      const messageOnly = rawText.includes(': ') ? rawText.split(': ').slice(1).join(': ') : rawText;
+      setMessages((prev) => [...prev, { text: messageOnly, sentByMe: false }]);
+    };
+
+    ws.current.onclose = () => {
+      console.log('Disconnected');
+    };
+
+    return () => {
+      ws.current.close();
+    };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -112,7 +113,7 @@ function Chat() {
   const sendMessage = () => {
     if (input.trim() === '') return;
     ws.current.send(input);
-    setMessages((prev) => [...prev, { text: `${username}: ${input}`, sentByMe: true }]);
+    setMessages((prev) => [...prev, { text: input, sentByMe: true }]);
     setInput('');
   };
 
@@ -128,9 +129,8 @@ function Chat() {
   };
 
   const forwardMessage = (text) => {
-  const messageOnly = text.split(': ').pop();
-  setInput(messageOnly);
-};
+    setInput(text);
+  };
 
   const handleLogout = () => {
     localStorage.clear();
