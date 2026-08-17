@@ -70,26 +70,40 @@ function Chat() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/login');
-      return;
+  const token = localStorage.getItem('token');
+  if (!token) {
+    navigate('/login');
+    return;
+  }
+
+  ws.current = new WebSocket(`wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`);
+
+  ws.current.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.file_url) {
+        setMessages((prev) => [...prev, {
+          text: data.sender,
+          fileUrl: data.file_url,
+          fileType: data.file_type,
+          sentByMe: data.sender === username,
+        }]);
+        return;
+      }
+    } catch (e) {
+      // JSON nahi hai — normal text message
     }
+    setMessages((prev) => [...prev, { text: event.data, sentByMe: false }]);
+  };
 
-    ws.current = new WebSocket(`wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`);
+  ws.current.onclose = () => {
+    console.log('Disconnected');
+  };
 
-    ws.current.onmessage = (event) => {
-      setMessages((prev) => [...prev, { text: event.data, sentByMe: false }]);
-    };
-
-    ws.current.onclose = () => {
-      console.log('Disconnected');
-    };
-
-    return () => {
-      ws.current.close();
-    };
-  }, []);
+  return () => {
+    ws.current.close();
+  };
+}, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
