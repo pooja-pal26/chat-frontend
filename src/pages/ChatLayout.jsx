@@ -100,7 +100,7 @@ function ChatLayout() {
         if (input.trim() === '' || !selectedContact) return;
         const now = new Date().toISOString();
         ws.current.send(JSON.stringify({
-            type: 'message',
+            type: 'message',              // ← YEH FIELD ZAROORI HAI
             receiver: selectedContact.username,
             text: input,
         }));
