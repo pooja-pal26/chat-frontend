@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Chat from './pages/Chat';
+// import ChatLayout from './pages/ChatLayout';
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/chat" element={<Chat />} />
+        {/* <Route path="/chat" element={<ChatLayout />} /> */}
         <Route path="/" element={<Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
