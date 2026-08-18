@@ -16,6 +16,7 @@ function ChatLayout() {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [copiedMsg, setCopiedMsg] = useState(false);
+    const [onlineUsers, setOnlineUsers] = useState([]);
     const ws = useRef(null);
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
