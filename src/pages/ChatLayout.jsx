@@ -48,17 +48,26 @@ function ChatLayout() {
 
         ws.current.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            setSelectedContact((current) => {
-                if (current && data.sender === current.username) {
-                    setMessages((prev) => [...prev, {
-                        text: data.text,
-                        fileUrl: data.file_url,
-                        fileType: data.file_type,
-                        sentByMe: false,
-                    }]);
-                }
-                return current;
-            });
+
+            if (data.type === 'online_users') {
+                setOnlineUsers(data.users);
+                return;
+            }
+
+            if (data.type === 'message') {
+                setSelectedContact((current) => {
+                    if (current && data.sender === current.username) {
+                        setMessages((prev) => [...prev, {
+                            text: data.text,
+                            fileUrl: data.file_url,
+                            fileType: data.file_type,
+                            timestamp: data.timestamp,
+                            sentByMe: false,
+                        }]);
+                    }
+                    return current;
+                });
+            }
         };
 
         ws.current.onclose = () => {
