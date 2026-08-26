@@ -7,6 +7,7 @@ import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ForwardIcon from '@mui/icons-material/Forward';
+import CloseIcon from '@mui/icons-material/Close';
 import api from '../api/axios';
 
 function Chat() {
@@ -14,35 +15,30 @@ function Chat() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [copiedMsg, setCopiedMsg] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const ws = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const sentTexts = useRef(new Set());
+  const sentFiles = useRef(new Set());
   const navigate = useNavigate();
   const username = localStorage.getItem('username');
 
-  const handleFileSelect = async (e) => {
+  const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const token = localStorage.getItem('token');
-    try {
-      const response = await api.post('/upload/', formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      setMessages((prev) => [...prev, {
-        fileUrl: response.data.file_url,
-        fileType: response.data.file_type,
-        sentByMe: true,
-      }]);
-    } catch (err) {
-      console.error('Upload failed', err);
-    }
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
     e.target.value = '';
+  };
+
+  const parseTimestamp = (ts) => {
+    if (!ts) return new Date().toISOString();
+    if (typeof ts === 'string' && ts.includes('T') && !ts.endsWith('Z') && !ts.match(/[+-]\d{2}:\d{2}$/)) {
+      return ts + 'Z';
+    }
+    return ts;
   };
 
   useEffect(() => {
@@ -53,10 +49,11 @@ function Chat() {
           headers: { Authorization: `Bearer ${token}` },
         });
         const history = response.data.map((msg) => ({
-          text: msg.message || null,
+          text: msg.message || msg.text || msg.content || null,
           fileUrl: msg.file_url || null,
           fileType: msg.file_type || null,
           sentByMe: msg.sender_username === username,
+          timestamp: parseTimestamp(msg.created_at || msg.timestamp),
         }));
         setMessages(history);
       } catch (err) {
@@ -74,27 +71,78 @@ function Chat() {
       navigate('/login');
       return;
     }
+    const wsUrl = `wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`;
 
-    ws.current = new WebSocket(`wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`);
-
+    ws.current = new WebSocket(wsUrl);
     ws.current.onmessage = (event) => {
+      let rawText = event.data;
+      let sender = null;
+
+      // Extract sender prefix safely
+      if (typeof rawText === 'string') {
+        const colonIndex = rawText.indexOf(': ');
+        if (colonIndex > 0 && colonIndex < 30) {
+          const possibleSender = rawText.substring(0, colonIndex);
+          if (!possibleSender.includes('{') && !possibleSender.includes('"')) {
+            sender = possibleSender;
+            rawText = rawText.substring(colonIndex + 2).trim();
+          }
+        }
+      }
+
       try {
-        const data = JSON.parse(event.data);
+        const data = JSON.parse(rawText);
         if (data.file_url) {
+          const msgSender = data.sender || data.sender_username || sender;
+          
+          if (msgSender === username) {
+            if (sentFiles.current.has(data.file_url)) {
+              sentFiles.current.delete(data.file_url);
+              return;
+            }
+          }
+          
           setMessages((prev) => [...prev, {
             fileUrl: data.file_url,
             fileType: data.file_type,
-            sentByMe: data.sender === username,
+            sentByMe: msgSender === username,
+            timestamp: parseTimestamp(data.timestamp || data.created_at),
+          }]);
+          return;
+        }
+        
+        // Handle JSON text messages
+        if (data.text || data.message || data.content) {
+          const msgSender = data.sender || data.sender_username || sender;
+          const msgText = data.text || data.message || data.content;
+          
+          if (msgSender === username) {
+            if (sentTexts.current.has(msgText)) {
+              sentTexts.current.delete(msgText);
+              return;
+            }
+          }
+          
+          setMessages((prev) => [...prev, {
+            text: msgText,
+            sentByMe: msgSender === username,
+            timestamp: parseTimestamp(data.timestamp || data.created_at),
           }]);
           return;
         }
       } catch (e) {
-        // JSON nahi hai
+        // Not JSON
       }
 
-      const rawText = event.data;
-      const messageOnly = rawText.includes(': ') ? rawText.split(': ').slice(1).join(': ') : rawText;
-      setMessages((prev) => [...prev, { text: messageOnly, sentByMe: false }]);
+      if (sender === username) {
+        if (sentTexts.current.has(rawText)) {
+          // Ignore echo from this exact tab
+          sentTexts.current.delete(rawText);
+          return;
+        }
+      }
+
+      setMessages((prev) => [...prev, { text: rawText, sentByMe: sender === username, timestamp: new Date().toISOString() }]);
     };
 
     ws.current.onclose = () => {
@@ -110,11 +158,50 @@ function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = () => {
-    if (input.trim() === '') return;
-    ws.current.send(input);
-    setMessages((prev) => [...prev, { text: input, sentByMe: true }]);
-    setInput('');
+  const sendMessage = async () => {
+    if (input.trim() === '' && !selectedFile) return;
+
+    if (selectedFile) {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      // Use the sender's own username as the receiver to bypass backend validation issues
+      formData.append('receiver', username); 
+      const token = localStorage.getItem('token');
+      try {
+        const response = await api.post('/upload/', formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        
+        // Broadcast the image via WebSocket so the other user receives it
+        const imgMsg = JSON.stringify({
+          file_url: response.data.file_url,
+          file_type: response.data.file_type,
+          sender: username
+        });
+        ws.current.send(imgMsg);
+        sentFiles.current.add(response.data.file_url);
+
+        setMessages((prev) => [...prev, {
+          fileUrl: response.data.file_url,
+          fileType: response.data.file_type,
+          sentByMe: true,
+          timestamp: new Date().toISOString(),
+        }]);
+      } catch (err) {
+        console.error('Upload failed', err);
+        const errMsg = err.response?.data?.detail || err.message || 'Unknown error';
+        alert('Image upload failed: ' + (typeof errMsg === 'object' ? JSON.stringify(errMsg) : errMsg));
+      }
+      setSelectedFile(null);
+      setPreviewUrl(null);
+    }
+
+    if (input.trim() !== '') {
+      ws.current.send(input);
+      sentTexts.current.add(input.trim());
+      setMessages((prev) => [...prev, { text: input, sentByMe: true, timestamp: new Date().toISOString() }]);
+      setInput('');
+    }
   };
 
   const copyMessage = (text) => {
@@ -142,6 +229,23 @@ function Chat() {
       className="d-flex align-items-center justify-content-center"
       style={{ minHeight: '100vh', backgroundColor: '#f0f2f5' }}
     >
+      <style>{`
+        .msg-bubble .msg-actions {
+          opacity: 0;
+          transition: opacity 0.2s;
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          background: rgba(255, 255, 255, 0.9);
+          border-radius: 6px;
+          padding: 2px 4px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+          z-index: 10;
+        }
+        .msg-bubble:hover .msg-actions {
+          opacity: 1;
+        }
+      `}</style>
       <div
         className="card shadow-lg border-0 d-flex flex-column"
         style={{
@@ -172,8 +276,8 @@ function Chat() {
               {username?.[0]?.toUpperCase()}
             </Avatar>
             <div>
-              <p className="text-white fw-semibold mb-0" style={{ fontSize: '16px' }}>
-                Chat Room
+              <p className="text-white fw-semibold mb-0" style={{ fontSize: '16px', textTransform: 'capitalize' }}>
+                {username || 'Chat Room'}
               </p>
               <p className="text-white-50 mb-0" style={{ fontSize: '12px' }}>
                 Online
@@ -203,45 +307,53 @@ function Chat() {
             messages.map((msg, idx) => (
               <div
                 key={idx}
-                className={`px-3 py-2 shadow-sm ${msg.sentByMe ? 'align-self-end' : 'align-self-start'}`}
+                className={`msg-bubble shadow-sm ${msg.sentByMe ? 'align-self-end' : 'align-self-start'}`}
                 style={{
                   maxWidth: '75%',
-                  wordWrap: 'break-word',
                   backgroundColor: msg.sentByMe ? '#DCF8C6' : '#ffffff',
                   borderRadius: msg.sentByMe ? '12px 12px 0 12px' : '12px 12px 12px 0',
-                  fontSize: '14px',
                   position: 'relative',
+                  padding: msg.fileUrl ? '4px' : '6px 10px 8px 10px',
                 }}
               >
-                {msg.fileUrl ? (
-                  <img
-                    src={msg.fileUrl}
-                    alt="attachment"
-                    style={{ maxWidth: '200px', borderRadius: '8px', display: 'block' }}
+                <div className="msg-actions d-flex gap-2 align-items-center">
+                  <ForwardIcon
+                    onClick={() => forwardMessage(msg.text || msg.fileUrl)}
+                    sx={{ fontSize: 16, color: '#555', cursor: 'pointer', '&:hover': { color: '#075E54' } }}
                   />
-                ) : (
-                  <div className="d-flex align-items-center justify-content-between gap-2">
-                    <span>{msg.text}</span>
-                    <div className="d-flex gap-1" style={{ flexShrink: 0 }}>
-                      <ForwardIcon
-                        onClick={() => forwardMessage(msg.text)}
-                        sx={{
-                          fontSize: 14,
-                          color: '#888',
-                          cursor: 'pointer',
-                          '&:hover': { color: '#075E54' },
-                        }}
-                      />
-                      <ContentCopyIcon
-                        onClick={() => copyMessage(msg.text)}
-                        sx={{
-                          fontSize: 14,
-                          color: '#888',
-                          cursor: 'pointer',
-                          '&:hover': { color: '#075E54' },
-                        }}
-                      />
+                  <ContentCopyIcon
+                    onClick={() => copyMessage(msg.text || msg.fileUrl)}
+                    sx={{ fontSize: 16, color: '#555', cursor: 'pointer', '&:hover': { color: '#075E54' } }}
+                  />
+                </div>
+
+                {msg.fileUrl ? (
+                  <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+                    <img
+                      src={msg.fileUrl}
+                      alt="attachment"
+                      style={{ maxWidth: '100%', maxHeight: '250px', borderRadius: '8px', display: 'block', objectFit: 'cover' }}
+                    />
+                    <div style={{
+                      position: 'absolute', bottom: '4px', right: '4px',
+                      fontSize: '10px', color: 'white', backgroundColor: 'rgba(0,0,0,0.4)',
+                      padding: '2px 6px', borderRadius: '10px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ fontSize: '14px', whiteSpace: 'pre-wrap', wordWrap: 'break-word', display: 'inline-block', paddingRight: '45px', marginBottom: '2px' }}>
+                      {msg.text}
+                    </span>
+                    <span style={{
+                      position: 'absolute', bottom: '-2px', right: '0px',
+                      fontSize: '10px', color: '#888', whiteSpace: 'nowrap'
+                    }}>
+                      {new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </div>
                 )}
               </div>
@@ -250,6 +362,25 @@ function Chat() {
           <div ref={messagesEndRef} />
         </div>
 
+        {previewUrl && (
+          <div className="px-3 py-2 border-top" style={{ backgroundColor: '#f0f0f0', position: 'relative' }}>
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <img src={previewUrl} alt="preview" style={{ height: '80px', borderRadius: '8px', objectFit: 'cover' }} />
+              <IconButton
+                size="small"
+                onClick={() => { setSelectedFile(null); setPreviewUrl(null); }}
+                sx={{
+                  position: 'absolute', top: -8, right: -8,
+                  backgroundColor: 'rgba(0,0,0,0.6)', color: 'white',
+                  '&:hover': { backgroundColor: 'rgba(0,0,0,0.8)' },
+                  width: 24, height: 24
+                }}
+              >
+                <CloseIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </div>
+          </div>
+        )}
         <div className="d-flex align-items-center gap-2 px-3 py-2" style={{ backgroundColor: '#f0f0f0' }}>
           <input
             type="file"

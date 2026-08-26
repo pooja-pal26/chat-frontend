@@ -45,7 +45,8 @@ function ChatLayout() {
             return;
         }
 
-        ws.current = new WebSocket(`wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`);
+        const wsUrl = `wss://fastapi-crud-hxwo.onrender.com/ws?token=${token}`;
+        ws.current = new WebSocket(wsUrl);
 
         ws.current.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -62,7 +63,7 @@ function ChatLayout() {
                             text: data.text,
                             fileUrl: data.file_url,
                             fileType: data.file_type,
-                            timestamp: data.timestamp,
+                            timestamp: parseTimestamp(data.timestamp || data.created_at),
                             sentByMe: false,
                         }]);
                     }
@@ -84,6 +85,14 @@ function ChatLayout() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    const parseTimestamp = (ts) => {
+        if (!ts) return new Date().toISOString();
+        if (typeof ts === 'string' && ts.includes('T') && !ts.endsWith('Z') && !ts.match(/[+-]\d{2}:\d{2}$/)) {
+            return ts + 'Z';
+        }
+        return ts;
+    };
+
     const selectContact = async (contact) => {
         setSelectedContact(contact);
         setLoading(true);
@@ -93,10 +102,11 @@ function ChatLayout() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const history = response.data.map((msg) => ({
-                text: msg.message,
-                fileUrl: msg.file_url,
-                fileType: msg.file_type,
+                text: msg.message || msg.text || msg.content || null,
+                fileUrl: msg.file_url || null,
+                fileType: msg.file_type || null,
                 sentByMe: msg.sender_username === username,
+                timestamp: parseTimestamp(msg.created_at || msg.timestamp),
             }));
             setMessages(history);
         } catch (err) {
